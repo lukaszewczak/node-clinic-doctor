@@ -1,7 +1,6 @@
 'use strict'
 
 const test = require('tap').test
-const os = require('os')
 const path = require('path')
 const async = require('async')
 const { spawn } = require('child_process')
@@ -9,21 +8,22 @@ const endpoint = require('endpoint')
 const CollectAndRead = require('./collect-and-read.js')
 
 test('cmd - collect - external SIGINT is relayed', function (t) {
-  if (os.platform() === 'win32') {
-    t.pass('Skip test as we cannot easily send SIGINT on windows')
-    t.end()
-    return
-  }
-
   const child = spawn(
     process.execPath, [
       path.resolve(__dirname, 'cmd-collect-exit-sigint.script.js')
     ], {
+      detached: process.platform !== 'win32',
       cwd: __dirname
     }
   )
+  child.stdout.once('data', () => {
+    child.kill('SIGINT')
+  })
 
-  child.stdout.once('data', () => child.kill('SIGINT'))
+  child.once('exit', function (code, signal) {
+    t.strictEqual(signal, 'SIGINT')
+    t.end()
+  })
 
   async.parallel({
     stdout (done) { child.stdout.pipe(endpoint(done)) },
@@ -34,8 +34,7 @@ test('cmd - collect - external SIGINT is relayed', function (t) {
     // Expect the WARNING output to be shown
     t.ok(output.stderr.toString().split('\n').length, 1)
     t.strictEqual(output.stdout.toString(),
-      'listening for SIGINT\nSIGINT received\n')
-    t.end()
+      'listening for SIGINT\n')
   })
 })
 
